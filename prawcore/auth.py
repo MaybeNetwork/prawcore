@@ -2,6 +2,7 @@
 import time
 from . import const
 from .exceptions import InvalidInvocation, OAuthException, ResponseException
+from pyotp import TOTP
 from requests import Request
 from requests.status_codes import codes
 
@@ -331,18 +332,20 @@ class ScriptAuthorizer(Authorizer):
 
     AUTHENTICATOR_CLASS = TrustedAuthenticator
 
-    def __init__(self, authenticator, username, password):
+    def __init__(self, authenticator, username, password, otp_secret=None):
         """Represent a single personal-use authorization to Reddit's API.
 
         :param authenticator: An instance of :class:`TrustedAuthenticator`.
         :param username: The Reddit username of one of the application's
             developers.
         :param password: The password associated with ``username``.
+        :param otp_secret: The otp_secret associated with ``username``.
 
         """
         super(ScriptAuthorizer, self).__init__(authenticator)
         self._username = username
         self._password = password
+        self._otp_secret = otp_secret
 
     def refresh(self):
         """Obtain a new personal-use script type access token."""
@@ -350,4 +353,5 @@ class ScriptAuthorizer(Authorizer):
             grant_type="password",
             username=self._username,
             password=self._password,
+            otp=(lambda x: x and (TOTP(x).now()))(self._otp_secret)
         )
