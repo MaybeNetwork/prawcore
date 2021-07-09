@@ -2,6 +2,7 @@
 import unittest
 
 from betamax import Betamax
+from mock import Mock, patch
 
 import prawcore
 
@@ -384,3 +385,19 @@ class ScriptAuthorizerTest(AuthorizerTestBase):
         ):
             self.assertRaises(prawcore.OAuthException, authorizer.refresh)
             self.assertFalse(authorizer.is_valid())
+
+    @patch("time.sleep", return_value=None)
+    @patch("prawcore.Requestor.request")
+    def test_refresh_with_retries(self, mock_post, _):
+        response = Mock(
+            json=lambda: {"error": "invalid grant"}, status_code=200
+        )
+        mock_post.side_effect = [response, response]
+        authorizer = prawcore.ScriptAuthorizer(
+            self.authentication,
+            "dummy",
+            "dummy",
+            two_factor_callback=lambda: ("123456", 31, 2),
+        )
+        with self.assertRaises(prawcore.OAuthException):
+            authorizer.refresh()

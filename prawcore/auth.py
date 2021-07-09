@@ -357,28 +357,61 @@ class ScriptAuthorizer(Authorizer):
     AUTHENTICATOR_CLASS = TrustedAuthenticator
 
     def __init__(
-        self, authenticator, username, password, two_factor_callback=None
+        self,
+        authenticator,
+        username,
+        password,
+        two_factor_callback=None,
     ):
         """Represent a single personal-use authorization to Reddit's API.
 
         :param authenticator: An instance of :class:`TrustedAuthenticator`.
         :param username: The Reddit username of one of the application's developers.
         :param password: The password associated with ``username``.
-        :param two_factor_callback: A function that returns OTPs (One-Time
-            Passcodes), also known as 2FA auth codes. If this function is
-            provided, prawcore will call it when authenticating.
+        :param two_factor_callback: (Optional) A function that returns OTPs (One-Time
+            Passcodes), also known as 2FA auth codes. If provided, this function should
+            return either a string of six digits or a 3-tuple of the form
+            ``(<OTP>, <DELAY>, <TRIES>)``, where ``<OTP>`` is a string of six
+            digits, ``<DELAY>`` is an integer that represents the number of seconds
+            to sleep between invalid authorization attempts, and ``<TRIES>`` is an
+            integer that represents the maximum number of authorization attempts to
+            make before an OAuthException is raised.
 
         """
-        super(ScriptAuthorizer, self).__init__(authenticator)
+        super().__init__(authenticator)
         self._username = username
         self._password = password
         self._two_factor_callback = two_factor_callback
 
+    def _refresh_with_retries(self, count=1, delay=0, maxcount=1):
+        if delay > 0:
+            time.sleep(delay)
+        additional_kwargs = {}
+        otp = self._two_factor_callback and self._two_factor_callback()
+        if otp:
+            if isinstance(otp, tuple):
+                if otp[0]:
+                    additional_kwargs["otp"] = otp[0]
+            else:
+                additional_kwargs["otp"] = otp
+        try:
+            self._request_token(
+                grant_type="password",
+                username=self._username,
+                password=self._password,
+                **additional_kwargs,
+            )
+        except OAuthException:
+            if otp and isinstance(otp, tuple) and len(otp) == 3:
+                _, delay, maxcount = otp
+                if count >= min(maxcount, 10):
+                    raise
+                self._refresh_with_retries(
+                    count=count + 1, delay=delay, maxcount=maxcount
+                )
+            else:
+                raise
+
     def refresh(self):
         """Obtain a new personal-use script type access token."""
-        self._request_token(
-            grant_type="password",
-            username=self._username,
-            password=self._password,
-            otp=self._two_factor_callback and self._two_factor_callback(),
-        )
+        self._refresh_with_retries()

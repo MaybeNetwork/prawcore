@@ -9,6 +9,14 @@ Unreleased
 **Added**
 
 - 301 redirects result in a ``Redirect`` exception.
+- Calls to method ``ScriptAuthorizer.refresh`` are handled by a private method,
+  ``ScriptAuthorizer._refresh_with_retries``. The latter provides the option to retry 
+  requests that result in invalid grants.
+
+**Changed**
+
+- Method ``ScriptAuthorizer.two_factor_callback`` can return either a string or a
+  tuple.
 
 2.2.0 (2021-06-10)
 ------------------
